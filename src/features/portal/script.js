@@ -450,7 +450,7 @@ function renderAll() {
   renderAnnouncementPreview();
   ensureNotificationStyles();
   updateNotificationBadge();
-  if (!isPublic(state.store) && !notificationRuntimeStarted) void startNotificationRuntime();
+  if (!notificationRuntimeStarted) void startNotificationRuntime();
 }
 
 document.addEventListener('conference-room-bookings-updated', () => {
@@ -3990,7 +3990,7 @@ function startStoreSync() {
 }
 
 async function syncStoreFromBackend() {
-  if (state.storeSyncing || document.hidden || document.querySelector('dialog[open], .admin-tab-page.is-active')) return;
+  if (state.storeSyncing || document.hidden) return;
   state.storeSyncing = true;
   try {
     await reloadStore();
