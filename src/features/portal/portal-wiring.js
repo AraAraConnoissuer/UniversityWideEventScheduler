@@ -31,10 +31,10 @@ document.addEventListener('click', (event) => {
 }, true);
 
 function loginAreaHref() {
-  if (document.body.dataset.dashboard === 'organization') return 'index.html?auth=signup';
+  if (document.body.dataset.dashboard === 'organization') return 'index.html';
   if (document.body.dataset.dashboard === 'admin') return 'admin-dashboard.html';
   const user = window.CONNECT_AUTHENTICATED_USER || currentUser(window.CONNECT_BOOTSTRAP_STORE || { users: [], currentUserId: 'public' });
-  return user?.role === 'super_admin' ? 'admin-dashboard.html' : 'index.html?auth=signup';
+  return user?.role === 'super_admin' ? 'admin-dashboard.html' : 'index.html';
 }
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', hydratePortalExtras);

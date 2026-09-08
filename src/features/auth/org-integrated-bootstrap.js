@@ -144,9 +144,8 @@ function selectIntegratedAuthTab(name) {
 }
 
 function selectInitialAuthTab() {
-  const params = new URLSearchParams(window.location.search);
-  const requestedTab = String(params.get('auth') || params.get('tab') || window.location.hash.replace('#', '') || '').trim().toLowerCase();
-  if (requestedTab === 'signup' || requestedTab === 'sign-up') selectIntegratedAuthTab('signup');
+  selectIntegratedAuthTab('login');
+  clearAuthTabFromUrl();
 }
 
 async function restoreExistingSession() {
