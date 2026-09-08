@@ -163,11 +163,21 @@ async function restoreExistingSession() {
 async function startDashboard(store) {
   if (dashboardStarted) return;
   dashboardStarted = true;
+  clearAuthTabFromUrl();
   window.CONNECT_AUTHENTICATED_USER = currentUser(store);
   window.CONNECT_BOOTSTRAP_STORE = store;
   document.body.classList.add('portal-authenticated', 'dashboard-login-ready', 'org-dashboard-shell');
   document.body.classList.remove('dashboard-login-required', 'auth-active', 'is-public', 'public-shell');
   await import('./calendar-logic-guard.js?v=20260625-start-end-dates-v6');await import('./portal-logic-fixes.js?v=20260625-org-announcements-v1');await waitForFullCalendar();await import('./script.js?v=20260625-org-announcements-v1');await import('./portal-wiring.js?v=20260625-concerns-sync-v1');await importOptionalDashboardModule('./activity-status-bridge.js?v=20260625-profile-status-v3');await importOptionalDashboardModule('./ui-light-cards.js?v=20260625-org-announcements-v1');await importOptionalDashboardModule('./portal-ui-polish.js?v=20260625-org-announcements-v1');await importOptionalDashboardModule('./conference-room-booking.js?v=20260812-conference-room-db-v4')
+}
+
+function clearAuthTabFromUrl() {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has('auth') && !url.searchParams.has('tab') && !['#signup', '#sign-up', '#login'].includes(url.hash.toLowerCase())) return;
+  url.searchParams.delete('auth');
+  url.searchParams.delete('tab');
+  if (['#signup', '#sign-up', '#login'].includes(url.hash.toLowerCase())) url.hash = '';
+  window.history.replaceState(window.history.state, document.title, url);
 }
 
 async function importOptionalDashboardModule(specifier) {

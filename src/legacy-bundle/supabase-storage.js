@@ -8,7 +8,15 @@ const AUTHENTICATED_CALENDAR_ITEMS_QUERY='/rest/v1/calendar_items?select=*&order
 const CONFERENCE_ROOM_BOOKINGS_QUERY='/rest/v1/conference_room_bookings?select=*&order=start_time.asc';
 const PUBLIC_CALENDAR_ITEMS_QUERY='/rest/v1/calendar_items?select=*&record_type=eq.schedule&approval_status=eq.approved&event_status=in.(planned,finalized)&or=(privacy_level.is.null,privacy_level.neq.internal)&order=created_at.asc';
 let lastEventIds=new Set(), refreshSessionPromise=null;
-function session(){try{return JSON.parse(sessionStorage.getItem(SESSION_KEY)||'null')}catch{return null}}
+function storedSessionValue(){
+  try{return sessionStorage.getItem(SESSION_KEY)||localStorage.getItem(SESSION_KEY)||'null'}catch{return'null'}
+}
+function session(){try{return JSON.parse(storedSessionValue())}catch{return null}}
+function saveSession(payload){
+  const serialized=JSON.stringify(payload);
+  try{sessionStorage.setItem(SESSION_KEY,serialized)}catch{}
+  try{localStorage.setItem(SESSION_KEY,serialized)}catch{}
+}
 function sessionExpiryMs(value=session()){
   const stored=Number(value?.expires_at||0);
   if(stored)return stored*1000;
@@ -258,10 +266,10 @@ function normalizedRepeatRule(value){const recurrenceType=String(value||'').trim
 function isConferenceRoomScheduleRecord(event={}){const scheduleType=String(event.schedule_type||'').trim().toLowerCase();const venue=String(event.venue||'').trim().toLowerCase();const title=String(event.title||'').trim().toLowerCase();return scheduleType==='conference_room_booking'||venue==='conference room'||title==='conference room booking'}
 function isRelationalScheduleReady(event={}){return Number(event.schedule_schema_version||0)>=2&&Boolean(event.title&&event.category_id&&event.venue)&&normalizedAttendeeCount(event.expected_attendees)>=1&&PRIVACY_LEVELS.includes(normalizedPrivacyLevel(event.privacy_level))&&Boolean(event.contact_person)&&/^\d{11}$/.test(String(event.contact_info||''))&&Boolean(event.public_description&&event.purpose)&&Boolean(event.start_time&&event.end_time)&&new Date(event.end_time)>new Date(event.start_time)}
 function shouldTryLegacyAuthFallback(error){return /invalid login credentials|invalid credentials|user not found/i.test(String(error?.message||''))}
-export async function authenticate(username,password){const login=username.trim().toLowerCase();const email=login.includes('@')?login:`${login}@core.local`;let payload;try{payload=await request('/auth/v1/token?grant_type=password',{method:'POST',body:body({email,password})})}catch(error){const fallbackUsername=login.endsWith('@aup.edu.ph')?login.split('@')[0].toLowerCase().replace(/[^a-z0-9_.-]+/g,'.').replace(/^[.-]+|[.-]+$/g,'').slice(0,32):'';if(!fallbackUsername||!shouldTryLegacyAuthFallback(error))throw error;try{payload=await request('/auth/v1/token?grant_type=password',{method:'POST',body:body({email:`${fallbackUsername}@core.local`,password})})}catch(fallbackError){if(shouldTryLegacyAuthFallback(fallbackError))throw error;throw fallbackError}}sessionStorage.setItem(SESSION_KEY,JSON.stringify(payload));return payload}
+export async function authenticate(username,password){const login=username.trim().toLowerCase();const email=login.includes('@')?login:`${login}@core.local`;let payload;try{payload=await request('/auth/v1/token?grant_type=password',{method:'POST',body:body({email,password})})}catch(error){const fallbackUsername=login.endsWith('@aup.edu.ph')?login.split('@')[0].toLowerCase().replace(/[^a-z0-9_.-]+/g,'.').replace(/^[.-]+|[.-]+$/g,'').slice(0,32):'';if(!fallbackUsername||!shouldTryLegacyAuthFallback(error))throw error;try{payload=await request('/auth/v1/token?grant_type=password',{method:'POST',body:body({email:`${fallbackUsername}@core.local`,password})})}catch(fallbackError){if(shouldTryLegacyAuthFallback(fallbackError))throw error;throw fallbackError}}saveSession(payload);return payload}
 export function authenticatedEmail(){return String(session()?.user?.email||'').trim().toLowerCase()}
 export function authenticatedUserId(){return session()?.user?.id||''}
-async function refreshSession(){const refreshToken=session()?.refresh_token;if(!refreshToken)throw new Error('Your session has expired. Please log in again.');const payload=await request('/auth/v1/token?grant_type=refresh_token',{method:'POST',body:body({refresh_token:refreshToken}),skipRefresh:true});sessionStorage.setItem(SESSION_KEY,JSON.stringify(payload));return payload}
+async function refreshSession(){const refreshToken=session()?.refresh_token;if(!refreshToken)throw new Error('Your session has expired. Please log in again.');const payload=await request('/auth/v1/token?grant_type=refresh_token',{method:'POST',body:body({refresh_token:refreshToken}),skipRefresh:true});saveSession(payload);return payload}
 export async function requestAccount({username,password,fullName,organizationName,email='',phoneNumber='',organizationCode=''}){const normalizedEmail=String(email).trim().toLowerCase();let signup;try{signup=await request('/auth/v1/signup',{method:'POST',body:body({email:normalizedEmail,password,data:{full_name:fullName,username,organization_name:organizationName,organization_code:organizationCode||username,contact_number:phoneNumber,account_type:'organization',email_category:'aup'}})})}catch(error){const isDuplicateAccount=/user_already_exists|already registered|user already exists/i.test(`${error?.code||''} ${error?.message||''}`);const message=isDuplicateAccount?'This AUP email is already registered. Wait for admin approval, or ask an admin to review the existing request.':(error?.message||'Organization signup failed.');console.error('Organization signup error:',{message,status:error?.status,code:error?.code,details:error?.details});if(typeof alert==='function')alert(message);if(isDuplicateAccount)throw new Error(message);throw error}const userId=signup?.user?.id;if(!userId)throw new Error('Supabase could not create the organization account.');const signupHeaders=signup?.access_token?{Authorization:`Bearer ${signup.access_token}`}:{ };await request('/rest/v1/profiles',{method:'POST',headers:{Prefer:'resolution=merge-duplicates,return=minimal',...signupHeaders},body:body({id:userId,username,full_name:fullName,email:normalizedEmail,role:'organization_manager',account_type:'org',organization_name:organizationName,contact_number:phoneNumber,approval_status:'pending',is_enabled:false})});return signup}
 export async function decideAccountRequest(id,decision){return rpc('approve_organization_profile',{p_profile_id:id,p_decision:decision},true)}
 const DELETE_COLLECTION_ALIASES={activityLogs:['activity_logs','activityLogs']};
@@ -286,4 +294,4 @@ export async function deleteRecord(collection,id){
   }
   throw new Error(`Supabase rejected delete for ${collection} ${id}: ${errors.join('; ')}`)
 }
-export function clearSession(){sessionStorage.removeItem(SESSION_KEY)}
+export function clearSession(){try{sessionStorage.removeItem(SESSION_KEY)}catch{}try{localStorage.removeItem(SESSION_KEY)}catch{}}
